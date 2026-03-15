@@ -1,12 +1,23 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import forge from "node-forge";
-import { buildApiUrl } from "../../utils/apiUrl";
+import { useAuth } from "../../context/AuthContext";
+import { useSocket } from "../../hooks/useSocket";
 
 type User = {
   _id: string;
   name: string;
   email: string;
-  publicKey?: string; // PEM del otro usuario
+  publicKey?: string;
+};
+
+type Message = {
+  _id: string;
+  content: string;
+  emisor: {
+    _id: string;
+    name: string;
+  };
+  date: string;
 };
 
 type ChatContainerProps = {
@@ -16,77 +27,156 @@ type ChatContainerProps = {
   token: string; // JWT para requests
 };
 
-export default function ChatContainer({ user, token }: ChatContainerProps) {
-  const [messages, setMessages] = useState<{ sender: "me" | "other"; text: string }[]>([]);
+export default function ChatContainer({ user, myPrivateKey }: ChatContainerProps) {
+  const { user: currentUser } = useAuth();
+  const [messages, setMessages] = useState<Message[]>([]);
   const [input, setInput] = useState("");
+  const [loading, setLoading] = useState(false);
+  
+  const { sendMessage: emitMessage, onMessageReceived } = useSocket(currentUser?._id || null);
 
-  // Función para enviar mensaje cifrado
-  const sendMessage = async () => {
-    if (!user) return alert("Selecciona un usuario primero");
+  useEffect(() => {
+    if (!onMessageReceived) return;
+
+    const unsubscribe = onMessageReceived((message: Message) => {
+
+      if (myPrivateKey && message.content) {
+        try {
+          const decoded = forge.util.decode64(message.content);
+          const decrypted = myPrivateKey.decrypt(decoded, "RSA-OAEP");
+          message.content = decrypted;
+        } catch (err) {
+          console.error("Error descifrando mensaje:", err);
+        }
+      }
+      
+      setMessages(prev => [...prev, message]);
+    });
+
+    return unsubscribe;
+  }, [myPrivateKey, onMessageReceived]);
+
+  const sendMessage = () => {
+    if (!input.trim() || !user?.publicKey || !currentUser) return;
+
+    setLoading(true);
 
     try {
-      // Obtener la publicKey del receptor desde backend
-      let recipientPublicKeyPem = user.publicKey;
-      if (!recipientPublicKeyPem) {
-        const res = await fetch(buildApiUrl(`/api/user/publicKey/${user._id}`), {
-          headers: { "Authorization": `Bearer ${token}` },
-        });
-        if (!res.ok) {
-          const errorData = await res.json().catch(() => ({}));
-          throw new Error(errorData?.error || "No se pudo obtener la publicKey del usuario");
-        }
-        const data = await res.json();
-        recipientPublicKeyPem = data.publicKey;
-      }
-
-      if (!recipientPublicKeyPem) return alert("El usuario no tiene publicKey");
-
-      const recipientPublicKey = forge.pki.publicKeyFromPem(recipientPublicKeyPem);
-
-      // Cifrar mensaje
+      const recipientPublicKey = forge.pki.publicKeyFromPem(user.publicKey);
       const encrypted = recipientPublicKey.encrypt(input, "RSA-OAEP");
       const encoded = forge.util.encode64(encrypted);
 
-      // Mostrar en UI
-      setMessages(prev => [...prev, { sender: "me", text: input }]);
-      setInput("");
-
-      // Enviar al backend
-      await fetch(buildApiUrl("/api/messages"), {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          "Authorization": `Bearer ${token}`
-        },
-        body: JSON.stringify({ recipientId: user._id, message: encoded })
+      // Enviar via WebSocket
+      emitMessage({
+        emisor: currentUser._id,
+        receptor: user._id,
+        content: input,
+        encryptedContent: encoded
       });
 
+      // Mostrar el mensaje localmente
+      setMessages(prev => [...prev, {
+        _id: Date.now().toString(),
+        content: input,
+        emisor: {
+          _id: currentUser._id,
+          name: currentUser.name
+        },
+        date: new Date().toISOString()
+      }]);
+
+      setInput("");
     } catch (err) {
-      console.error("Error enviando mensaje:", err);
-      alert("No se pudo enviar el mensaje. Verifica que ambos usuarios hayan iniciado sesión en el chat para registrar su publicKey.");
+      console.error("Error al enviar mensaje:", err);
+    } finally {
+      setLoading(false);
     }
   };
 
-  
+  const handleKeyPress = (e: React.KeyboardEvent) => {
+    if (e.key === "Enter" && !e.shiftKey) {
+      e.preventDefault();
+      sendMessage();
+    }
+  };
+
+  if (!user) {
+    return (
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "center", height: "100%", color: "#999" }}>
+        Selecciona un usuario para chatear
+      </div>
+    );
+  }
 
   return (
-    <div style={{ display: "flex",flexDirection: "column", height: "100%" }}>
-      <div style={{ flex: 1, overflowY: "auto", padding: "10px" }}>
-        {messages.map((m, idx) => (
-          <div key={idx} style={{ textAlign: m.sender === "me" ? "right" : "left" }}>
-            <p>{m.text}</p>
-          </div>
-        ))}
+    <div style={{ display: "flex", flexDirection: "column", height: "100%", padding: "10px", gap: "10px" }}>
+      <div style={{ borderBottom: "1px solid #ddd", paddingBottom: "10px" }}>
+        <h3>{user.name}</h3>
+        <small>{user.email}</small>
       </div>
 
-      <div style={{ display: "flex", gap: "10px" }}>
-        <input
+      <div style={{ flex: 1, overflowY: "auto", display: "flex", flexDirection: "column", gap: "8px" }}>
+        {messages.length === 0 ? (
+          <p style={{ color: "#999", textAlign: "center", margin: "auto" }}>No hay mensajes aún</p>
+        ) : (
+          messages.map((msg) => (
+            <div
+              key={msg._id}
+              style={{
+                display: "flex",
+                justifyContent: msg.emisor._id === currentUser?._id ? "flex-end" : "flex-start",
+                marginBottom: "8px"
+              }}
+            >
+              <div
+                style={{
+                  maxWidth: "70%",
+                  padding: "8px 12px",
+                  borderRadius: "8px",
+                  backgroundColor: msg.emisor._id === currentUser?._id ? "#007bff" : "#e9ecef",
+                  color: msg.emisor._id === currentUser?._id ? "white" : "black",
+                  wordWrap: "break-word"
+                }}
+              >
+                {msg.content}
+                <div style={{ fontSize: "0.8em", marginTop: "4px", opacity: 0.7 }}>
+                  {new Date(msg.date).toLocaleTimeString()}
+                </div>
+              </div>
+            </div>
+          ))
+        )}
+      </div>
+
+      <div style={{ display: "flex", gap: "8px", borderTop: "1px solid #ddd", paddingTop: "10px" }}>
+        <textarea
           value={input}
           onChange={(e) => setInput(e.target.value)}
-          style={{ flex: 1, padding: "8px" }}
+          onKeyPress={handleKeyPress}
+          placeholder="Escribe un mensaje..."
+          rows={2}
+          disabled={loading}
+          style={{
+            flex: 1,
+            padding: "8px",
+            borderRadius: "4px",
+            border: "1px solid #ddd",
+            fontFamily: "Arial"
+          }}
         />
-        <button onClick={sendMessage} style={{ padding: "8px 16px" }}>
-          Enviar
+        <button
+          onClick={sendMessage}
+          disabled={loading || !input.trim()}
+          style={{
+            padding: "8px 16px",
+            backgroundColor: input.trim() ? "#007bff" : "#ccc",
+            color: "white",
+            border: "none",
+            borderRadius: "4px",
+            cursor: input.trim() ? "pointer" : "not-allowed"
+          }}
+        >
+          {loading ? "..." : "Enviar"}
         </button>
       </div>
     </div>
