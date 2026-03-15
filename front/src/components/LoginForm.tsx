@@ -47,6 +47,9 @@ export function LoginForm() {
 
       const data = await res.json();
       
+      console.log("Login exitoso:", data);
+      setAuth(data.token, data.user, data.user.privateKey);
+      console.log("Token almacenado:", data.token);
       // Desencriptar el JWT token con tipado
       const decoded = jwtDecode<JwtPayload>(data.token);
       const user = {

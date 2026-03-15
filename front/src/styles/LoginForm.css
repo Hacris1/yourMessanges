@@ -1,9 +1,16 @@
+body {
+  margin: 0;
+  padding: 0;
+}
 .login-container {
   display: flex;
   justify-content: center;
   align-items: center;
   min-height: 100vh;
-  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  background-image: url("../fondoLogin.jpg");
+  background-size: cover ;
+  background-position: center;
+  background-repeat: no-repeat;
   font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
 }
 
@@ -39,7 +46,7 @@
 
 .login-card input:focus {
   outline: none;
-  border-color: #667eea;
+  border-color: red;
   box-shadow: 0 0 5px rgba(102, 126, 234, 0.3);
 }
 
@@ -50,7 +57,7 @@
 
 .login-card button[type="submit"] {
   padding: 0.75rem;
-  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  background-color: #dc3545;
   color: white;
   border: none;
   border-radius: 5px;
@@ -94,7 +101,7 @@
 .toggle-form button {
   background: none;
   border: none;
-  color: #667eea;
+  color: #dc3545;
   font-weight: bold;
   cursor: pointer;
   font-size: 1rem;
