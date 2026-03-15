@@ -113,7 +113,6 @@ export default function ChatContainer({ user, myPrivateKey }: ChatContainerProps
         encryptedContent: encoded
       });
 
-      // MOSTRAR LOCAL
       setMessagesByChat(prev => ({
         ...prev,
         [user._id]: [...(prev[user._id] || []), {
@@ -246,7 +245,11 @@ export default function ChatContainer({ user, myPrivateKey }: ChatContainerProps
                 borderRadius: "12px",
                 maxWidth: "60%",
                 fontSize: "14px",
-                boxShadow: "0 1px 2px rgba(0,0,0,0.35)"
+                boxShadow: "0 1px 2px rgba(0,0,0,0.35)",
+
+                wordBreak: "break-word",
+                overflowWrap: "break-word",
+                whiteSpace: "pre-wrap"
               }}
             >
 

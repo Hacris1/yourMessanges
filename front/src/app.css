@@ -1,0 +1,12 @@
+.users-panel{
+  width:300px;
+  border-right:1px solid #1f2c34;
+  overflow-y:auto;
+  scrollbar-width:none;      /* Firefox */
+  -ms-overflow-style:none;   /* IE */
+}
+
+/* Chrome, Edge, Safari */
+.users-panel::-webkit-scrollbar{
+  display:none;
+}
