@@ -37,8 +37,9 @@ export function LoginForm() {
 
       const data = await res.json();
       
-      // Guardar auth con los datos devueltos
+      console.log("Login exitoso:", data);
       setAuth(data.token, data.user, data.user.privateKey);
+      console.log("Token almacenado:", data.token);
       navigate("/chat");
     } catch (err) {
       setError("Error de conexión con el servidor");
