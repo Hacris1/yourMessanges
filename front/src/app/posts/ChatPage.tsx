@@ -1,14 +1,16 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { UsersList } from "./listUsers";
 import ChatContainer from "./chatContainer";
 import { useAuth } from "../../context/AuthContext";
 import { useNavigate } from "react-router-dom";
+import { useRSA } from "../../hooks/useRSA";
+import forge from "node-forge";
 
 type User = {
   _id: string;
   name: string;
   email: string;
-  publicKey: string;
+  publicKey?: string; // claves de otros usuarios
 };
 
 export default function ChatPage() {
@@ -16,14 +18,25 @@ export default function ChatPage() {
   const { logout } = useAuth();
   const navigate = useNavigate();
 
+  const { publicKey, privateKey } = useRSA(); 
+
   const handleLogout = () => {
     logout();
     navigate("/login");
   };
 
+  //  enviar tu publicKey al backend
+  useEffect(() => {
+    if (publicKey) {
+      // convertir a PEM y guardarla en tu backend
+      const myPublicKeyPem = forge.pki.publicKeyToPem(publicKey);
+      console.log("Enviar tu publicKey al backend:", myPublicKeyPem);
+    }
+  }, [publicKey]);
+
   return (
     <div style={{ display: "flex", flexDirection: "column", height: "100vh" }}>
-      {/* Header con botón de logout */}
+      {/* Header con logout */}
       <div style={{
         display: "flex",
         justifyContent: "space-between",
@@ -48,14 +61,18 @@ export default function ChatPage() {
         </button>
       </div>
 
-      {/* Contenido principal */}
+      {/* Contenido  */}
       <div style={{ display: "flex", gap: "20px", padding: "20px", flex: 1, overflow: "hidden" }}>
         <div style={{ width: "300px", borderRight: "1px solid #ddd", overflowY: "auto" }}>
           <UsersList onSelect={setSelectedUser} />
         </div>
 
         <div style={{ flex: 1 }}>
-          <ChatContainer user={selectedUser} />
+          <ChatContainer 
+            user={selectedUser} 
+            myPrivateKey={privateKey} 
+            myPublicKey={publicKey} 
+          />
         </div>
       </div>
     </div>
