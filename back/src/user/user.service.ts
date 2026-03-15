@@ -67,7 +67,8 @@ class UserService {
         const token = jwt.sign({ 
             id: user._id,
             name: user.name,
-            email: user.email
+            email: user.email,
+            publicKey: user.publicKey
         }, secret, {
             expiresIn: "24h"
         });
