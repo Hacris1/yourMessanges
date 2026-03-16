@@ -14,11 +14,9 @@ export function initializeSocket(httpServer: HTTPServer) {
   });
 
   io.on('connection', (socket: Socket) => {
-    console.log('Cliente conectado:', socket.id);
 
     socket.on('register-user', (userId: string) => {
       connectedUsers.set(userId, socket.id);
-      console.log(`Usuario ${userId} registrado con socket ${socket.id}`);
       socket.join(`user:${userId}`); 
     });
 
@@ -73,7 +71,6 @@ export function initializeSocket(httpServer: HTTPServer) {
       connectedUsers.forEach((socketId, userId) => {
         if (socketId === socket.id) {
           connectedUsers.delete(userId);
-          console.log(`Usuario ${userId} desconectado`);
         }
       });
     });

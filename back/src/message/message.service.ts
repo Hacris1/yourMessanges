@@ -44,6 +44,15 @@ class MessageService {
         return MessageModel.find({ $or: [{ emisor: userId }, { receptor: userId }] }).populate("emisor").populate("receptor");
     }
 
+    public async getConversation (user1Id: string, user2Id: string) {
+        return MessageModel.find({
+            $or: [
+                { emisor: user1Id, receptor: user2Id },
+                { emisor: user2Id, receptor: user1Id }
+            ]
+        }).populate("emisor").populate("receptor").sort({ date: 1 });
+    }
+
 }
 
 export const messageServices = new MessageService();

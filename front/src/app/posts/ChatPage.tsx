@@ -7,6 +7,7 @@ import { useRSA } from "../../hooks/useRSA";
 import forge from "node-forge";
 import { jwtDecode } from "jwt-decode";
 import { buildApiUrl } from "../../utils/apiUrl";
+import { AccountSettingsModal } from "../../components/AccountSettingsModal";
 
 type TokenPayload = {
   id: string;
@@ -26,52 +27,15 @@ type User = {
 export default function ChatPage() {
 
   const [selectedUser, setSelectedUser] = useState<User | null>(null);
-  const { logout, token } = useAuth();
+  const [showAccountSettings, setShowAccountSettings] = useState(false);
+  const { logout, token, user } = useAuth(); 
   const navigate = useNavigate();
 
   const { publicKey, privateKey } = useRSA();
 
-  let currentUserId: string | null = null;
-
-  if (token) {
-    const decoded = jwtDecode<TokenPayload>(token);
-    currentUserId = decoded.id;
-  }
-
   useEffect(() => {
-
-    if (publicKey && currentUserId) {
-
-      const publicKeyPem = forge.pki.publicKeyToPem(publicKey);
-
-      fetch(buildApiUrl("/api/user/updatePublickey"), {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${token}`
-        },
-        body: JSON.stringify({
-          userId: currentUserId,
-          publicKey: publicKeyPem
-        })
-      })
-      .then(async (res) => {
-
-        const data = await res.json();
-
-        if (!res.ok) {
-          throw new Error(data?.error || "No se pudo guardar la public key");
-        }
-
-        return data;
-
-      })
-      .then(data => console.log("Public key enviada:", data?.message || "ok"))
-      .catch(err => console.error("Error enviando public key", err));
-
-    }
-
-  }, [publicKey, currentUserId, token]);
+    // El componente está montado y listo
+  }, [user, privateKey, publicKey]);
 
   const handleLogout = () => {
 
@@ -82,46 +46,51 @@ export default function ChatPage() {
 
   return (
 
-    <div
-      style={{
+    <div style={{ display: "flex", flexDirection: "column", height: "100vh", backgroundColor: "#0b141a", color: "#e9edef" }}>
+      {/* Modal de configuración de cuenta */}
+      <AccountSettingsModal
+        isOpen={showAccountSettings}
+        onClose={() => setShowAccountSettings(false)}
+      />
+
+      {/* Header */}
+      <div style={{
         display: "flex",
-        flexDirection: "column",
-        height: "100vh",
-        overflow: "hidden",
-        backgroundColor: "#0b141a",
-        color: "#e9edef"
-      }}
-    >
-
-      {/* HEADER */}
-      <div
-        style={{
-          display: "flex",
-          justifyContent: "space-between",
-          alignItems: "center",
-          padding: "10px 20px",
-          backgroundColor: "#202c33",
-          borderBottom: "1px solid #1f2c34"
-        }}
-      >
-        <h1 style={{ margin: 0, fontSize: "22px" }}>
-          Your Messages
-        </h1>
-
-        <button
-          onClick={handleLogout}
-          style={{
-            padding: "8px 16px",
-            backgroundColor: "#2a3942",
-            color: "white",
-            border: "1px solid #3b4a54",
-            borderRadius: "5px",
-            cursor: "pointer"
-          }}
-        >
-          Cerrar Sesión
-        </button>
-
+        justifyContent: "space-between",
+        alignItems: "center",
+        padding: "10px 20px",
+        backgroundColor: "#202c33",
+        borderBottom: "1px solid #1f2c34"
+      }}>
+        <h1 style={{ margin: 0, fontSize: "22px", color: "#e9edef" }}>Your Messages</h1>
+        <div style={{ display: "flex", gap: "10px" }}>
+          <button 
+            onClick={() => setShowAccountSettings(true)}
+            style={{
+              padding: "8px 16px",
+              backgroundColor: "#2a3942",
+              color: "white",
+              border: "1px solid #3b4a54",
+              borderRadius: "5px",
+              cursor: "pointer"
+            }}
+          >
+            ⚙️ Configuración
+          </button>
+          <button 
+            onClick={handleLogout}
+            style={{
+              padding: "8px 16px",
+              backgroundColor: "#2a3942",
+              color: "white",
+              border: "1px solid #3b4a54",
+              borderRadius: "5px",
+              cursor: "pointer"
+            }}
+          >
+            Cerrar Sesión
+          </button>
+        </div>
       </div>
 
       {/* CONTENIDO */}
@@ -149,12 +118,7 @@ export default function ChatPage() {
             display: "flex"
           }}
         >
-          <ChatContainer
-            user={selectedUser}
-            myPrivateKey={privateKey}
-            myPublicKey={publicKey}
-            token={token || ""}
-          />
+          <ChatContainer user={selectedUser} />
         </div>
 
       </div>

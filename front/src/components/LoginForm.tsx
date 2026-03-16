@@ -1,6 +1,8 @@
 import { useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { useAuth } from "../context/AuthContext";
+import { useRSA } from "../hooks/useRSA";
+import { useKeyDerivation } from "../hooks/useKeyDerivation";
 import { jwtDecode } from "jwt-decode";
 import { buildApiUrl } from "../utils/apiUrl";
 import "../styles/LoginForm.css";
@@ -17,6 +19,8 @@ interface JwtPayload {
 export function LoginForm() {
   const navigate = useNavigate();
   const { setAuth } = useAuth();
+  const { setDerivedKeys } = useRSA();
+  const { deriveKeysFromPassword } = useKeyDerivation();
 
   const [isLogin, setIsLogin] = useState(true);
   const [name, setName] = useState("");
@@ -31,6 +35,22 @@ export function LoginForm() {
     setLoading(true);
 
     try {
+      let privateKeyPem = localStorage.getItem("persistedPrivateKeyPem");
+      let publicKeyPem = localStorage.getItem("persistedPublicKeyPem");
+      
+      if (!privateKeyPem || !publicKeyPem) {
+        const derived = await deriveKeysFromPassword(email, password);
+        privateKeyPem = derived.privateKeyPem;
+        publicKeyPem = derived.publicKeyPem;
+      }
+      
+      sessionStorage.setItem("derivedPrivateKeyPem", privateKeyPem);
+      sessionStorage.setItem("derivedPublicKeyPem", publicKeyPem);
+      localStorage.setItem("persistedPrivateKeyPem", privateKeyPem);
+      localStorage.setItem("persistedPublicKeyPem", publicKeyPem);
+
+      setDerivedKeys(privateKeyPem, publicKeyPem);
+      
       const res = await fetch(buildApiUrl("/api/user/login"), {
         method: "POST",
         headers: {
@@ -40,14 +60,17 @@ export function LoginForm() {
       });
 
       if (!res.ok) {
-        setError("Usuario o contraseña incorrecta");
+        const errorData = await res.json();
+        if (res.status === 401 && errorData.error?.includes("deactivated")) {
+          setError("Tu cuenta ha sido desactivada. Contacta con soporte para reactivarla.");
+        } else {
+          setError("Usuario o contraseña incorrecta");
+        }
         setLoading(false);
         return;
       }
 
       const data = await res.json();
-      
-      // Desencriptar el JWT token con tipado
       const decoded = jwtDecode<JwtPayload>(data.token);
       const user = {
         _id: decoded.id,
@@ -55,8 +78,25 @@ export function LoginForm() {
         email: decoded.email,
         publicKey: decoded.publicKey
       };
-      // Guardar auth con los datos desencriptados
-      setAuth(data.token, user, decoded.publicKey || "");
+      
+      // Sincronizar clave pública con servidor
+      try {
+        const updateRes = await fetch(buildApiUrl("/api/user/updatePublickey"), {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${data.token}`
+          },
+          body: JSON.stringify({ 
+            userId: user._id, 
+            publicKey: publicKeyPem 
+          })
+        });
+      } catch (err) {
+        // Error silencioso en sincronización de clave pública
+      }
+      
+      setAuth(data.token, user);
       navigate("/chat");
     } catch (err) {
       setError("Error de conexión con el servidor");
@@ -78,12 +118,28 @@ export function LoginForm() {
     }
 
     try {
+      if (!name || !email || !password) {
+        setError("Todos los campos son requeridos");
+        setLoading(false);
+        return;
+      }
+
+      const { privateKeyPem, publicKeyPem } = await deriveKeysFromPassword(email, password);
+      
+      sessionStorage.setItem("derivedPrivateKeyPem", privateKeyPem);
+      sessionStorage.setItem("derivedPublicKeyPem", publicKeyPem);
+      
+      localStorage.setItem("persistedPrivateKeyPem", privateKeyPem);
+      localStorage.setItem("persistedPublicKeyPem", publicKeyPem);
+      
+      setDerivedKeys(privateKeyPem, publicKeyPem);
+      
       const res = await fetch(buildApiUrl("/api/user/"), {
         method: "POST",
         headers: {
           "Content-Type": "application/json"
         },
-        body: JSON.stringify({ name, email, password })
+        body: JSON.stringify({ name, email, password, publicKey: publicKeyPem })
       });
 
       if (!res.ok) {
@@ -112,7 +168,25 @@ export function LoginForm() {
         email: decoded.email,
         publicKey: decoded.publicKey
       };
-      setAuth(loginData.token, user, decoded.publicKey || "");
+      
+      // Sincronizar clave pública con servidor
+      try {
+        const updateRes = await fetch(buildApiUrl("/api/user/updatePublickey"), {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${loginData.token}`
+          },
+          body: JSON.stringify({ 
+            userId: user._id, 
+            publicKey: publicKeyPem 
+          })
+        });
+      } catch (err) {
+        // Error silencioso en sincronización de clave pública
+      }
+      
+      setAuth(loginData.token, user);
       navigate("/chat");
     } catch (err) {
       setError("Error de conexión");

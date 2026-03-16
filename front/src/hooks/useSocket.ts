@@ -17,7 +17,6 @@ export const useSocket = (userId: string | null) => {
     });
 
     socketRef.current.on('connect', () => {
-      console.log('Conectado a WebSocket:', socketRef.current?.id);
       socketRef.current?.emit('register-user', userId);
     });
 
@@ -26,7 +25,7 @@ export const useSocket = (userId: string | null) => {
     });
 
     socketRef.current.on('disconnect', () => {
-      console.log('Desconectado de WebSocket');
+      // Desconectado
     });
 
     return () => {

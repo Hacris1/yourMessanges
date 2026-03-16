@@ -63,6 +63,16 @@ class MessageController {
         }
     }
 
+    public async getConversation (req: Request, res: Response) {
+        const { user1Id, user2Id } = req.body;
+        try {
+            const messages = await messageServices.getConversation(user1Id, user2Id);
+            res.json(messages);
+        } catch (error) {
+            res.status(500).json({ error: 'Error fetching conversation' });
+        }
+    }
+
 }
 
 export const messageController = new MessageController();

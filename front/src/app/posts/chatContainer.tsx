@@ -4,6 +4,8 @@ import EmojiPicker from "emoji-picker-react";
 import fondowpp from "../../fondowpp.png";
 import { useAuth } from "../../context/AuthContext";
 import { useSocket } from "../../hooks/useSocket";
+import { useRSA } from "../../hooks/useRSA";
+import { buildApiUrl } from "../../utils/apiUrl";
 
 type User = {
   _id: string;
@@ -23,16 +25,10 @@ type Message = {
   date: string;
 };
 
-type ChatContainerProps = {
-  user: User | null;
-  myPrivateKey: forge.pki.rsa.PrivateKey | null;
-  myPublicKey: forge.pki.rsa.PublicKey | null;
-  token: string;
-};
+export default function ChatContainer({ user }: { user: User | null }) {
 
-export default function ChatContainer({ user, myPrivateKey }: ChatContainerProps) {
-
-  const { user: currentUser } = useAuth();
+  const { user: currentUser, token } = useAuth();
+  const { privateKey: myPrivateKey, decryptMessageWithHistory, publicKey: myPublicKey } = useRSA();
 
   const [messagesByChat, setMessagesByChat] = useState<Record<string, Message[]>>({});
   const [input, setInput] = useState("");
@@ -41,67 +37,179 @@ export default function ChatContainer({ user, myPrivateKey }: ChatContainerProps
 
   const { sendMessage: emitMessage, onMessageReceived } = useSocket(currentUser?._id || null);
 
-  const getReceptorId = (message: Message) => {
-    if (!message.receptor) return null;
-    return typeof message.receptor === "string"
-      ? message.receptor
-      : message.receptor._id;
-  };
+  // Sincronizar clave pública con el servidor
+  useEffect(() => {
+    if (!token || !currentUser || !myPublicKey) return;
+
+    const syncPublicKey = async () => {
+      try {
+        const myPublicKeyPem = localStorage.getItem("persistedPublicKeyPem") || 
+                               sessionStorage.getItem("derivedPublicKeyPem");
+        
+        if (!myPublicKeyPem) {
+          return;
+        }
+        
+        const response = await fetch(buildApiUrl("/api/user/updatePublickey"), {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${token}`
+          },
+          body: JSON.stringify({ 
+            userId: currentUser._id, 
+            publicKey: myPublicKeyPem 
+          })
+        });
+
+        if (!response.ok) {
+          console.error("Error sincronizando clave pública");
+        }
+      } catch (err) {
+        console.error("Error en sincronización de clave pública:", err);
+      }
+    };
+
+    syncPublicKey();
+  }, [token, currentUser?._id, myPublicKey]);
+
+  useEffect(() => {
+    if (user) {
+      // Usuario seleccionado
+    }
+  }, [user?._id]); 
+
+  useEffect(() => {
+    // Private key watcher
+  }, [myPrivateKey]);
+
+  useEffect(() => {
+    if (user?._id) {
+      setMessagesByChat(prev => ({
+        ...prev,
+        [user._id]: []
+      }));
+    }
+  }, [user?._id]);
+
+  useEffect(() => {
+    if (!user || !currentUser) return;
+
+    const loadMessages = async () => {
+      try {
+        const response = await fetch(
+          buildApiUrl(`/api/messages/conversation`),
+          {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+              Authorization: `Bearer ${localStorage.getItem("token")}`
+            },
+            body: JSON.stringify({
+              user1Id: currentUser._id,
+              user2Id: user._id
+            })
+          }
+        );
+
+        let allMessages: Message[] = [];
+
+        if (response.ok) {
+          const backendMessages = await response.json();
+          
+          const otherUserMessages = backendMessages.filter(
+            (msg: Message) => msg.emisor._id === user._id
+          );
+
+          const processedMessages = otherUserMessages.map((msg: Message) => {
+            if (msg.content) {
+              try {
+                const decrypted = decryptMessageWithHistory(msg.content);
+                if (decrypted) {
+                  msg.content = decrypted;
+                } else {
+                  msg.content = "⏳ No se pudo desencriptar este mensaje";
+                }
+              } catch (err) {
+                console.error("Error descifrando mensaje recibido:", err);
+                msg.content = "⏳ Aún no se han podido cargar estos mensajes";
+              }
+            } else if (!myPrivateKey) {
+              msg.content = "⏳ Aún no se han podido cargar estos mensajes";
+            }
+
+            return msg;
+          });
+
+          allMessages = processedMessages;
+        }
+
+        const sentMessagesKey = `sent_messages_${currentUser._id}_${user._id}`;
+        const sentMessages = JSON.parse(localStorage.getItem(sentMessagesKey) || "[]");
+        
+        const backendMessageIds = new Set(allMessages.map((m: Message) => m._id));
+        const uniqueSentMessages = sentMessages.filter((msg: Message) => !backendMessageIds.has(msg._id));
+        
+        const combined = [...allMessages, ...uniqueSentMessages].sort((a, b) => 
+          new Date(a.date).getTime() - new Date(b.date).getTime()
+        );
+
+        setMessagesByChat(prev => ({
+          ...prev,
+          [user._id]: combined
+        }));
+      } catch (err) {
+        console.error("Error cargando mensajes:", err);
+      }
+    };
+
+    loadMessages();
+  }, [user, currentUser, myPrivateKey]);
 
   // RECIBIR MENSAJES SOCKET
   useEffect(() => {
 
-    if (!onMessageReceived) return;
+    if (!onMessageReceived || !user) return;
 
     const unsubscribe = onMessageReceived((message: Message) => {
-
-      const receptorId = getReceptorId(message);
-
-      const processedMessage: Message = { ...message };
-
-      if (myPrivateKey && processedMessage.content && receptorId === currentUser?._id) {
-
-        try {
-
-          const decoded = forge.util.decode64(processedMessage.content);
-          const decrypted = myPrivateKey.decrypt(decoded, "RSA-OAEP");
-          processedMessage.content = decrypted;
-
-        } catch (err) {
-
-          console.error("Error descifrando mensaje:", err);
-
+      if (message.emisor._id === user._id) {
+        if (message.content) {
+          try {
+            const decrypted = decryptMessageWithHistory(message.content);
+            
+            if (decrypted) {
+              message.content = decrypted;
+            } else {
+              message.content = "⏳ No se pudo desencriptar este mensaje";
+            }
+          } catch (err) {
+            console.error("Error descifrando mensaje por socket:", err);
+            message.content = "⏳ Aún no se han podido cargar estos mensajes";
+          }
+        } else {
+          message.content = "⏳ Aún no se han podido cargar estos mensajes";
         }
 
+        setMessagesByChat(prev => ({
+          ...prev,
+          [user._id]: [...(prev[user._id] || []), message]
+        }));
       }
-
-      const chatUserId = processedMessage.emisor._id === currentUser?._id
-        ? receptorId
-        : processedMessage.emisor._id;
-
-      if (!chatUserId) return;
-
-      setMessagesByChat(prev => ({
-        ...prev,
-        [chatUserId]: [...(prev[chatUserId] || []), processedMessage]
-      }));
-
     });
 
     return unsubscribe;
 
-  }, [myPrivateKey, onMessageReceived]);
+  }, [myPrivateKey, onMessageReceived, user, currentUser]);
 
   // ENVIAR MENSAJE
   const sendMessage = () => {
-
     if (!input.trim() || !user?.publicKey || !currentUser) return;
 
     setLoading(true);
 
     try {
-
       const recipientPublicKey = forge.pki.publicKeyFromPem(user.publicKey);
+      
       const encrypted = recipientPublicKey.encrypt(input, "RSA-OAEP");
       const encoded = forge.util.encode64(encrypted);
 
@@ -113,9 +221,8 @@ export default function ChatContainer({ user, myPrivateKey }: ChatContainerProps
         encryptedContent: encoded
       });
 
-      setMessagesByChat(prev => ({
-        ...prev,
-        [user._id]: [...(prev[user._id] || []), {
+      // Guardar mensaje localmente en localStorage
+      const sentMessage = {
         _id: Date.now().toString(),
         content: input,
         emisor: {
@@ -124,21 +231,27 @@ export default function ChatContainer({ user, myPrivateKey }: ChatContainerProps
         },
         receptor: user._id,
         date: new Date().toISOString()
-      }]
-      }));
+      };
+
+      if (user._id) {
+        setMessagesByChat(prev => ({
+          ...prev,
+          [user._id]: [...(prev[user._id] || []), sentMessage]
+        }));
+
+        const sentMessagesKey = `sent_messages_${currentUser._id}_${user._id}`;
+        const savedMessages = JSON.parse(localStorage.getItem(sentMessagesKey) || "[]");
+        savedMessages.push(sentMessage);
+        localStorage.setItem(sentMessagesKey, JSON.stringify(savedMessages));
+      }
 
       setInput("");
 
     } catch (err) {
-
       console.error("Error enviando mensaje:", err);
-
     } finally {
-
       setLoading(false);
-
     }
-
   };
 
   // ENTER

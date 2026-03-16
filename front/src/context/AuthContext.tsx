@@ -10,9 +10,8 @@ export type User = {
 type AuthContextType = {
   token: string | null;
   user: User | null;
-  privateKey: string | null;
   isLoading: boolean;
-  setAuth: (token: string, user: User, privateKey: string) => void;
+  setAuth: (token: string, user: User) => void;
   logout: () => void;
 };
 
@@ -21,19 +20,16 @@ const AuthContext = createContext<AuthContextType | undefined>(undefined);
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [token, setToken] = useState<string | null>(null);
   const [user, setUser] = useState<User | null>(null);
-  const [privateKey, setPrivateKey] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(true);
 
   useEffect(() => {
     try {
       const savedToken = localStorage.getItem("token");
       const savedUser = localStorage.getItem("user");
-      const savedPrivateKey = localStorage.getItem("privateKey");
 
-      if (savedToken && savedUser && savedPrivateKey) {
+      if (savedToken && savedUser) {
         setToken(savedToken);
         setUser(JSON.parse(savedUser));
-        setPrivateKey(savedPrivateKey);
       }
     } catch (error) {
       console.error("Error loading auth from localStorage:", error);
@@ -42,30 +38,31 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
   }, []);
 
-  const setAuth = (newToken: string, newUser: User, newPrivateKey: string) => {
+  const setAuth = (newToken: string, newUser: User) => {
     setToken(newToken);
     setUser(newUser);
-    setPrivateKey(newPrivateKey);
 
     localStorage.setItem("token", newToken);
     localStorage.setItem("user", JSON.stringify(newUser));
-    localStorage.setItem("privateKey", newPrivateKey);
   };
 
   const logout = () => {
     setToken(null);
     setUser(null);
-    setPrivateKey(null);
 
     localStorage.removeItem("token");
     localStorage.removeItem("user");
-    localStorage.removeItem("privateKey");
+
+    // Limpiar claves derivadas de ambos storages
+    sessionStorage.removeItem("derivedPrivateKeyPem");
+    sessionStorage.removeItem("derivedPublicKeyPem");
+    localStorage.removeItem("persistedPrivateKeyPem");
+    localStorage.removeItem("persistedPublicKeyPem");
   };
 
   const value: AuthContextType = {
     token,
     user,
-    privateKey,
     isLoading,
     setAuth,
     logout

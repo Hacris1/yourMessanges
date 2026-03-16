@@ -54,6 +54,7 @@ export function UsersList({
       }
 
       const data = await response.json();
+      
       // Filtrar al usuario actual
       const filtered = data.filter(
         (user: User) => user._id !== currentUser?._id

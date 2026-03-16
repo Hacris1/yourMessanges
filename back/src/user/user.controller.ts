@@ -99,6 +99,67 @@ class UserController {
         }
     }
 
+    public async regenerateKeys (req: Request, res: Response) {
+        const { userId, publicKey } = req.body;
+        try {
+            const user = await userServices.regenerateKeys(userId, publicKey);
+            if (!user) {
+                return res.status(404).json({ error: 'User not found' });
+            }
+            res.status(200).json({ 
+                message: 'Keys regenerated successfully',
+                user: {
+                    _id: user._id,
+                    name: user.name,
+                    email: user.email,
+                    publicKey: user.publicKey
+                }
+            });
+        } catch (error) {
+            res.status(500).json({ error: 'Error regenerating keys' });
+        }
+    }
+
+    public async deactivateAccount (req: Request, res: Response) {
+        const { userId } = req.body;
+        try {
+            const user = await userServices.deactivateAccount(userId);
+            if (!user) {
+                return res.status(404).json({ error: 'User not found' });
+            }
+            res.status(200).json({ 
+                message: 'Account deactivated successfully',
+                user: {
+                    _id: user._id,
+                    name: user.name,
+                    email: user.email,
+                    isActive: user.isActive
+                }
+            });
+        } catch (error) {
+            res.status(500).json({ error: 'Error deactivating account' });
+        }
+    }
+
+    public async deleteAccount (req: Request, res: Response) {
+        const { userId } = req.body;
+        try {
+            const user = await userServices.deleteAccount(userId);
+            if (!user) {
+                return res.status(404).json({ error: 'User not found' });
+            }
+            res.status(200).json({ 
+                message: 'Account deleted successfully',
+                user: {
+                    _id: user._id,
+                    email: user.email
+                }
+            });
+        } catch (error) {
+            res.status(500).json({ error: 'Error deleting account' });
+        }
+    }
+
 }
 
 export const userController = new UserController();

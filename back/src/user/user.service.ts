@@ -14,7 +14,8 @@ class UserService {
         return UserModel.create({
             name: userData.name,
             email: userData.email,
-            password: userData.password
+            password: userData.password,
+            publicKey: userData.publicKey
         });
     }
 
@@ -60,6 +61,10 @@ class UserService {
 
         if (user.password !== password) {
             throw new Error("Invalid password");
+        }
+
+        if (!user.isActive) {
+            throw new Error("Account is deactivated. Please contact support to reactivate.");
         }
 
         const secret = "mi_clave_secreta";
@@ -111,6 +116,58 @@ class UserService {
 
             return user.publicKey;
 
+        } catch (error) {
+            if (error instanceof ReferenceError) {
+                throw new Error("User not found");
+            }
+            throw error;
+        }
+    }
+
+    public async regenerateKeys (userId: string, publicKey: string) {
+        try {
+            const user : IUser | null = await this.getById(userId);
+            if (!user) {
+                throw new Error("User not found");
+            }
+
+            user.publicKey = publicKey;
+            await user.save();
+
+            return user;
+
+        } catch (error) {
+            if (error instanceof ReferenceError) {
+                throw new Error("User not found");
+            }
+            throw error;
+        }
+    }
+
+    public async deactivateAccount (userId: string) {
+        try {
+            const user : IUser | null = await this.getById(userId);
+            if (!user) {
+                throw new Error("User not found");
+            }
+
+            user.isActive = false;
+            await user.save();
+
+            return user;
+
+        } catch (error) {
+            if (error instanceof ReferenceError) {
+                throw new Error("User not found");
+            }
+            throw error;
+        }
+    }
+
+    public async deleteAccount (userId: string) {
+        try {
+            const user = await UserModel.findByIdAndDelete(userId);
+            return user;
         } catch (error) {
             if (error instanceof ReferenceError) {
                 throw new Error("User not found");
