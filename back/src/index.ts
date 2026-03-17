@@ -6,11 +6,12 @@ import { router as messageRouter } from './message/message.routes.js';
 import { router as userRouter } from './user/user.routes.js';
 import { initializeSocket } from './socket/socket.service.js';
 import cors from 'cors';
+import dotenv from "dotenv";
 
 const app: Express = express();
 const httpServer = createServer(app);
 
-process.loadEnvFile();
+dotenv.config();
 
 const port = Number(process.env.APP_PORT) || 4000;
 

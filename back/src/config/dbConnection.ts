@@ -1,6 +1,7 @@
 import mongoose from "mongoose";
+import dotenv from "dotenv";
 
-process.loadEnvFile();
+dotenv.config();
 
 const connectionString = process.env.MONGO_URI || "";
 const dbName = process.env.MONGO_INITDB_DATABASE || "test";
